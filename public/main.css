@@ -1,0 +1,19 @@
+body {
+    font-family: sans-serif;
+}
+
+.status {
+    padding: 5px;
+}
+
+.status .name {
+
+}
+
+.status .percent {
+    font-weight: bold;
+}
+
+.status .size {
+
+}
