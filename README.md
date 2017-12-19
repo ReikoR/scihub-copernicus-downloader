@@ -17,4 +17,4 @@ module.exports = config;
 ## Usage
 
 1. Run `node downloader.js` to start downloader.
-2. Open `localhost:3001` to see progress.
+2. Open `localhost:3010` to see progress.
