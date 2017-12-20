@@ -1,5 +1,5 @@
 ## Setup
-1. Install [https://nodejs.org/en/](node.js)
+1. Install [node.js](https://nodejs.org/en/)
 2. Run `npm install` in project folder to install dependencies.
 3. Create config_.js in project folder.
 4. Add username, password and filter string to config_.js.
