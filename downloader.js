@@ -77,143 +77,112 @@ app.use(express.static('public'));
 
 app.listen(3010, () => logger.log('Listening on port 3010'));
 
-getCount(filterParams, function (error, count) {
-    const limit = 10;
-    const concurrentLimit = 2;
-    let currentOffset = 0;
-    let doneCount = 0;
-    let activeCount = 0;
+const limit = 10;
+const concurrentLimit = 2;
+let currentOffset = 0;
+let doneCount = 0;
+let activeCount = 0;
+let totalCount = 0;
 
-    if (error) {
-        logger.error(error);
-    } else if (count) {
-        logger.log('count', count);
-        getList();
+getList();
+
+function increaseDone() {
+    doneCount++;
+    activeCount--;
+
+    logger.log('doneCount', doneCount);
+
+    if (doneCount >= totalCount) {
+        logger.log('ALL DONE');
+        return;
     }
 
-    function increaseDone() {
-        doneCount++;
-        activeCount--;
+    if (doneCount + activeCount >= currentOffset + limit) {
+        getNextList();
+    } else if (activeCount < concurrentLimit) {
+        processNextItem();
+    }
+}
 
-        logger.log('doneCount', doneCount);
+function increaseActive() {
+    activeCount++;
 
-        if (doneCount >= count) {
-            logger.log('ALL DONE');
-            return;
-        }
+    logger.log('activeCount', activeCount);
 
-        if (doneCount + activeCount >= currentOffset + limit) {
-            getNextList();
-        } else if (activeCount < concurrentLimit) {
-            processNextItem();
+    if (activeCount < concurrentLimit) {
+        processNextItem();
+    }
+}
+
+function getList() {
+    logger.log('getList', currentOffset, limit);
+
+    getProductsList(filterParams, currentOffset, limit, function (error, result) {
+        logger.log('totalresults', result.totalresults);
+
+		totalCount = result.totalresults;
+
+        currentList = currentList.concat(result.products);
+
+        processNextItem();
+    });
+}
+
+function getNextList() {
+    currentOffset += limit;
+
+    getList();
+}
+
+function processNextItem() {
+    let indexInList = -1;
+
+    for (let i = 0; i < currentList.length; i++) {
+        if (!statuses[i]) {
+            indexInList = i;
+            break;
         }
     }
 
-    function increaseActive() {
-        activeCount++;
+    const item = currentList[indexInList];
 
-        logger.log('activeCount', activeCount);
+    logger.log('processNextItem', indexInList);
 
-        if (activeCount < concurrentLimit) {
-            processNextItem();
-        }
+    if (!item) {
+        logger.error('No item at', indexInList);
+        return;
     }
 
-    function getList() {
-        logger.log('getList', currentOffset, limit);
-
-        getProductsList(filterParams, currentOffset, limit, function (error, list) {
-            logger.log('list.length', list.length);
-
-            currentList = currentList.concat(list);
-
-            processNextItem();
-        });
-    }
-
-    function getNextList() {
-        currentOffset += limit;
-
-        getList();
-    }
-
-    function processNextItem() {
-        let indexInList = -1;
-
-        for (let i = 0; i < currentList.length; i++) {
-            if (!statuses[i]) {
-                indexInList = i;
-                break;
-            }
-        }
-
-        const item = currentList[indexInList];
-
-        logger.log('processNextItem', indexInList);
-
-        if (!item) {
-            logger.error('No item at', indexInList);
-            return;
-        }
-
-        statuses[indexInList] = {
-            status: Status.ACTIVE,
-            progress: {
-                size: 0,
-                bytesWritten: 0
-            }
-        };
-
-        const fileName = item.identifier + '.zip';
-
-        increaseActive();
-
-        function onProgress(fileProgress) {
-            statuses[indexInList].progress.size = fileProgress.size;
-            statuses[indexInList].progress.bytesWritten = fileProgress.bytesWritten;
-        }
-
-        function onDone() {
-            statuses[indexInList].status = Status.DONE;
-
-            fse.move(path.join(tempFolder, fileName), path.join(doneFolder, fileName), function (error) {
-                if (error) {
-                    logger.log(error);
-                }
-
-                increaseDone();
-            });
-        }
-
-        download(item.uuid, fileName, onProgress, onDone);
-    }
-});
-
-function getCount(filterParams, callback) {
-    const options = {
-        url: `https://scihub.copernicus.eu/dhus/api/stub/products/count?filter=${encodeURIComponent(filterParams)}`,
-        headers: {
-            'Authorization': authHeader
+    statuses[indexInList] = {
+        status: Status.ACTIVE,
+        progress: {
+            size: 0,
+            bytesWritten: 0
         }
     };
 
-    logger.log(options.url);
+    const fileName = item.identifier + '.zip';
 
-    request(options, (error, response, body) => {
-        if (error) {
-            logger.error(error);
-            callback(error);
-        } else {
-            if (response.statusCode === 200) {
-                //logger.log(body);
-                callback(null, parseInt(body, 10));
-            } else {
-                logger.log('statusCode:', response.statusCode);
-                logger.log('headers:', response.headers);
-                callback('Could not get count');
+    increaseActive();
+
+    function onProgress(fileProgress) {
+        statuses[indexInList].progress.size = fileProgress.size;
+        statuses[indexInList].progress.bytesWritten = fileProgress.bytesWritten;
+    }
+
+    function onDone() {
+        statuses[indexInList].status = Status.DONE;
+
+        fse.move(path.join(tempFolder, fileName), path.join(doneFolder, fileName), function (error) {
+            if (error) {
+                logger.log(error);
             }
-        }
-    });
+
+            increaseDone();
+        });
+    }
+
+    download(item.uuid, fileName, onProgress, onDone);
 }
 
 function getProductsList(filterParams, offset, limit, callback) {
